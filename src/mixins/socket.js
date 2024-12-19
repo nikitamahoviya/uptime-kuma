@@ -730,6 +730,7 @@ export default {
                 result[monitorID] = this.heartbeatList[monitorID][index];
             }
 
+            console.log("this is the lastHeartbeatList:", result);
             return result;
         },
 

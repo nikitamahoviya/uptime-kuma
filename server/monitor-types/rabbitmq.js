@@ -3,6 +3,7 @@ const { log, UP, DOWN } = require("../../src/util");
 const { axiosAbortSignal } = require("../util-server");
 const axios = require("axios");
 
+
 class RabbitMqMonitorType extends MonitorType {
     name = "rabbitmq";
 
@@ -39,14 +40,20 @@ class RabbitMqMonitorType extends MonitorType {
                 };
                 log.debug("monitor", `[${monitor.name}] Axios Request: ${JSON.stringify(options)}`);
                 const res = await axios.request(options);
+                log.debug("the content in the res is:", res);
                 log.debug("monitor", `[${monitor.name}] Axios Response: status=${res.status} body=${JSON.stringify(res.data)}`);
-                if (res.status === 200) {
+                if (res.status === 200 || res.status == 475 || res.statusCode == 'S'  || res.status ) {
                     heartbeat.status = UP;
                     heartbeat.msg = "OK";
                     break;
                 } else if (res.status === 503) {
                     heartbeat.msg = res.data.reason;
-                } else {
+                } else if( res.statusCode == 'S'){
+                    log.debug("printing from here");
+                    heartbeat.msg = `${res.status} - ${res.statusText}`;
+                }
+                
+                else {
                     heartbeat.msg = `${res.status} - ${res.statusText}`;
                 }
             } catch (error) {

@@ -249,6 +249,23 @@ let needSetup = false;
 
         const fs = require("fs");
 
+        app.post("/test-webhook", async (request, response) => {
+            const { encrypt, decrypt } = require("./src/common/utils/crypto-helper/encryption-decryption");
+            const log = require("log"); // Assuming this exists for debugging
+        
+            // Encrypt the incoming request body for testing
+            const encryptedData = encrypt(request.body);
+        
+            // Simulate a webhook sending data
+            const decryptedData = decrypt(encryptedData);
+        
+            log.debug("Encrypted:", encryptedData);
+            log.debug("Decrypted:", decryptedData);
+        
+            response.send("Processed and Encrypted Data Sent Successfully");
+        });
+        
+
         app.get("/_e2e/take-sqlite-snapshot", async (request, response) => {
             await Database.close();
             try {

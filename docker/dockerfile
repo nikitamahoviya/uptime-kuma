@@ -2,7 +2,7 @@ ARG BASE_IMAGE=louislam/uptime-kuma:base2
 
 ############################################
 # Build in Golang
-# Run npm run build-healthcheck-armv7 in the host first, otherwise it will be super slow where it is building the armv7 healthcheck
+# Run `npm run build-healthcheck-armv7` on the host first to avoid slow builds
 # Check file: builder-go.dockerfile
 ############################################
 FROM louislam/uptime-kuma:builder-go AS build_healthcheck
@@ -14,30 +14,41 @@ FROM louislam/uptime-kuma:base2 AS build
 USER node
 WORKDIR /app
 
+# Set Puppeteer to skip Chromium download
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
+
+# Copy npm configuration and install dependencies
 COPY --chown=node:node .npmrc .npmrc
 COPY --chown=node:node package.json package.json
 COPY --chown=node:node package-lock.json package-lock.json
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --legacy-peer-deps
+
+# Copy the rest of the application code and healthcheck script
 COPY . .
 COPY --chown=node:node --from=build_healthcheck /app/extra/healthcheck /app/extra/healthcheck
+
+# Create the data directory
 RUN mkdir ./data
 
 ############################################
-# ⭐ Main Image
+# Main Image
 ############################################
 FROM $BASE_IMAGE AS release
 WORKDIR /app
 
 LABEL org.opencontainers.image.source="https://github.com/louislam/uptime-kuma"
 
+# Set environment variables
 ENV UPTIME_KUMA_IS_CONTAINER=1
 
-# Copy app files from build layer
+# Copy app files from the build stage
 COPY --chown=node:node --from=build /app /app
 
+# Expose necessary ports and set healthcheck
 EXPOSE 3001
 HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 CMD extra/healthcheck
+
+# Set entrypoint and command
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["node", "server/server.js"]
 
@@ -48,7 +59,7 @@ FROM release AS rootless
 USER node
 
 ############################################
-# Mark as Nightly
+# Nightly Build
 ############################################
 FROM release AS nightly
 RUN npm run mark-as-nightly
@@ -57,44 +68,51 @@ FROM nightly AS nightly-rootless
 USER node
 
 ############################################
-# Build an image for testing pr
+# Build an Image for Testing PRs
 ############################################
 FROM louislam/uptime-kuma:base2 AS pr-test2
 WORKDIR /app
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
 
-## Install Git
+# Install Git and GitHub CLI
 RUN apt update \
-    && apt --yes --no-install-recommends install curl \
+    && apt --yes --no-install-recommends install curl git \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt update \
-    && apt --yes --no-install-recommends  install git
+    && apt update
 
-## Empty the directory, because we have to clone the Git repo.
+# Clear the app directory and set permissions
 RUN rm -rf ./* && chown node /app
 
+# Configure Git for the PR tester
 USER node
 RUN git config --global user.email "no-reply@no-reply.com"
 RUN git config --global user.name "PR Tester"
+
+# Clone the repo and install dependencies
 RUN git clone https://github.com/louislam/uptime-kuma.git .
 RUN npm ci
 
+# Expose ports and set healthcheck
 EXPOSE 3000 3001
 HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 CMD extra/healthcheck
 CMD ["npm", "run", "start-pr-test"]
 
 ############################################
-# Upload the artifact to Github
+# Upload Artifacts to GitHub
 ############################################
 FROM louislam/uptime-kuma:base2 AS upload-artifact
 WORKDIR /
-RUN apt update && \
-    apt --yes install curl file
 
+# Install necessary tools
+RUN apt update \
+    && apt --yes install curl file
+
+# Copy app files from the build stage
 COPY --from=build /app /app
 
+# Set build arguments
 ARG VERSION
 ARG GITHUB_TOKEN
 ARG TARGETARCH
@@ -102,13 +120,10 @@ ARG PLATFORM=debian
 ARG FILE=$PLATFORM-$TARGETARCH-$VERSION.tar.gz
 ARG DIST=dist.tar.gz
 
+# Ensure line endings are correct and script is executable
+RUN sed -i 's/\r$//' /app/extra/upload-github-release-asset.sh
 RUN chmod +x /app/extra/upload-github-release-asset.sh
 
-# Full Build
-# RUN tar -zcvf $FILE app
-# RUN /app/extra/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=louislam repo=uptime-kuma tag=$VERSION filename=$FILE
-
-# Dist only
+# Create and upload artifact
 RUN cd /app && tar -zcvf $DIST dist
 RUN /app/extra/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=louislam repo=uptime-kuma tag=$VERSION filename=/app/$DIST
-

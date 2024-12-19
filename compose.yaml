@@ -1,9 +1,10 @@
 services:
   uptime-kuma:
     image: louislam/uptime-kuma:1
+    environment:
+      - KUMA_NOTIFICATION_WEBHOOK_URL=https://accenture.webhook.office.com/webhookb2/0fd5f247-c2b3-4081-b45b-15820693de07@e0793d39-0939-496d-b129-198edd916feb/IncomingWebhook/7ce8ac8f69004b929f3258f4db181a74/4b30df85-3819-4501-8fca-2bd2a5854814/V2I0y0D_X9iasiFroZzNMLtYDT5EItBrouMVRXmaK62pg1
     volumes:
       - ./data:/app/data
     ports:
-      # <Host Port>:<Container Port>
       - 3001:3001
     restart: unless-stopped
